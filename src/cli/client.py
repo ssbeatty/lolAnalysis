@@ -2,6 +2,7 @@
 用来跟腾讯api交互的模块
 """
 import os
+import json
 from abc import ABC, abstractmethod
 
 import requests
@@ -10,6 +11,17 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.support.ui import WebDriverWait
+
+
+HEADERS = {
+    'Referer': 'https://www.wegame.com.cn/middle/login/third_callback.html',
+    'Accept': 'application/json',
+    'Accept-Encoding': 'application/json, text/plain, gzip',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36',
+    'Content-Type': 'application/json;charset=UTF-8',
+}
+
+NICK_API = "https://m.wegame.com.cn/api/mobile/lua/proxy/index/mwg_lol_proxy/query_by_nick"
 
 
 def parse_cookies(_cookies):
@@ -38,10 +50,14 @@ class BaseClient(ABC):
 
 class ClientSync(BaseClient, ABC):
     def __init__(self, qq, password):
-        self.cookies = {}
         self.qq = qq
         self.password = password
+        # 等待刷新的超时时间，根据网络调节
         self.load_time_out = 10
+
+        self.session = requests.Session()
+        # 设置请求头
+        self.session.headers = HEADERS
 
     def login(self):
         options = webdriver.ChromeOptions()
@@ -77,14 +93,29 @@ class ClientSync(BaseClient, ABC):
         chrome_driver.switch_to.default_content()
         WebDriverWait(chrome_driver, self.load_time_out).until(
             expected_conditions.invisibility_of_element_located((By.ID, "login")))
-        cookies = chrome_driver.get_cookies()
-        self.cookies = parse_cookies(cookies)
+        cookies = parse_cookies(chrome_driver.get_cookies())
+
+        for key, value in cookies.items():
+            self.session.cookies.set(key, value)
+        # self.session.cookies.set("tgp_ticket", cookies.get("tgp_ticket"))
+        # self.session.cookies.set("tgp_id", cookies.get("tgp_ticket"))
 
     def query_by_nick(self, nick):
-        ...
+        resp = self.session.post(NICK_API, json={
+            "search_nick": nick
+        })
+        if resp.status_code != 200:
+            return None
+        context = resp.content.decode()
+        try:
+            json_body = json.loads(context)
+            if json_body.get("code") != 0:
+                return None
+            return json_body.get("data")
+        except Exception("load query_by_nick context error") as e:
+            print(e)
+            return None
 
     def get_battle_list(self, offset, num):
         ...
 
-    def get_cookies(self):
-        return self.cookies
