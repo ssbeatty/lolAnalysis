@@ -19,7 +19,6 @@ class TestClientCase(unittest.TestCase):
 
     def test_get_battle_list(self):
         client = ClientSync(qq=get_configs().qq, password=get_configs().password)
-        client.login()
         for i in client.get_battle_list(client.query_by_nick("夜夜夜夜夜神月灬")[0]):
             print(i)
 

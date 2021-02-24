@@ -2,9 +2,9 @@
 用来跟腾讯api交互的模块
 """
 import os
-import json
 from abc import ABC, abstractmethod
 
+import retry
 import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -83,11 +83,15 @@ class ClientSync(BaseClient, ABC):
         # 设置请求头
         self.session.headers = HEADERS
 
+        self.is_login = False
+
+    @retry.retry(delay=1, tries=4)
     def login(self):
         _cookie = load_cookie()
         if _cookie:
             for key, value in _cookie.items():
                 self.session.cookies.set(key, value)
+            self.is_login = True
             return
         options = webdriver.ChromeOptions()
         options.add_argument('--headless')
@@ -128,22 +132,17 @@ class ClientSync(BaseClient, ABC):
         save_cookie(cookies)
         for key, value in cookies.items():
             self.session.cookies.set(key, value)
+        self.is_login = True
 
-    def query_by_nick(self, nick):
-        resp = self.session.post(NICK_API, json={
-            "search_nick": nick
-        })
-        if resp.status_code != 200:
-            return None
+    def __query_by_nick(self, nick):
         try:
+            if not self.is_login:
+                self.login()
+            resp = self.session.post(NICK_API, json={
+                "search_nick": nick
+            })
             players = []
-            json_body = resp.json()
-            if not json_body:
-                return None
-            data = json_body.get("data")
-            if data.get("result") != 0:
-                delete_cookie()
-                return None
+            data = self.catch_resp(resp)
             for player in data.get("player_list"):
                 p = Player()
                 p.game_nick = player.get("game_nick")
@@ -154,28 +153,25 @@ class ClientSync(BaseClient, ABC):
 
                 players.append(p)
             return players
-        except Exception("query_by_nick error") as e:
+        except Exception as e:
+            self.is_login = False
             delete_cookie()
-            print(e)
+            raise e
 
-    def get_battle_list(self, player, b_type=0, offset=0, limit=10):
-        resp = self.session.post(BATTLE_API, json={
-            "offset": 0,
-            "limit": 10,
-            "filter_type": b_type,  # 查询类型 0:无筛选 1:匹配 2:排位 3:云顶
-            "game_id": 26,
-            "slol_id": player.slol_id,
-            "area_id": player.area_id,
-        }, verify=False)
-        if resp.status_code != 200:
-            return None
+    def __get_battle_list(self, player, b_type=0, offset=0, limit=10):
         try:
+            if not self.is_login:
+                self.login()
+            resp = self.session.post(BATTLE_API, json={
+                "offset": 0,
+                "limit": 10,
+                "filter_type": b_type,  # 查询类型 0:无筛选 1:匹配 2:排位 3:云顶
+                "game_id": 26,
+                "slol_id": player.slol_id,
+                "area_id": player.area_id,
+            }, verify=False)
             player_battle_brief_list = []
-            json_body = resp.json()
-            data = json_body.get("data")
-            if data.get("result") != 0:
-                delete_cookie()
-                return None
+            data = self.catch_resp(resp)
             for battle in data.get("player_battle_brief_list"):
                 b = Battle()
                 b.battle_id = battle.get("battle_id")
@@ -186,8 +182,25 @@ class ClientSync(BaseClient, ABC):
                 b.ext_tag_desc = battle.get("ext_tag_desc")
                 player_battle_brief_list.append(b)
             return player_battle_brief_list
-
-        except Exception("query_by_nick error") as e:
+        except Exception as e:
+            self.is_login = False
             delete_cookie()
-            print(e)
+            raise e
 
+    def catch_resp(self, resp):
+        code = resp.json().get("code")
+        if code != 0:
+            raise Exception("api error")
+        data = resp.json().get("data")
+        if data.get("result") != 0:
+            self.is_login = False
+            raise Exception("api error")
+        return data
+
+    @retry.retry(tries=5)
+    def get_battle_list(self, player, b_type=0, offset=0, limit=10):
+        self.__get_battle_list(player, b_type, offset, limit)
+
+    @retry.retry(tries=5)
+    def query_by_nick(self, nick):
+        self.__query_by_nick(nick)

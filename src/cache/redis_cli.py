@@ -23,7 +23,12 @@ def load_cookie():
     conn = redis.Redis(connection_pool=POOL)
     result = conn.get(COOKIE_KEY)
     if result:
-        return json.loads(result.decode())
+        try:
+            res = json.loads(result.decode())
+            return res
+        except Exception as e:
+            print(e)
+            return None
     else:
         return None
 
