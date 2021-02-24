@@ -22,6 +22,7 @@ HEADERS = {
 }
 
 NICK_API = "https://m.wegame.com.cn/api/mobile/lua/proxy/index/mwg_lol_proxy/query_by_nick"
+BATTLE_API = "https://m.wegame.com.cn/api/mobile/lua/proxy/index/mwg_lol_proxy/get_battle_list"
 
 
 def parse_cookies(_cookies):
@@ -31,6 +32,27 @@ def parse_cookies(_cookies):
     for _cookie in _cookies:
         new_cookies[_cookie["name"]] = _cookie["value"]
     return new_cookies
+
+
+class Player:
+    slol_id = ""
+    area_id = 0
+    isMe = False
+    game_id = 26
+    game_nick = ""
+    icon_url = ""
+    rank_title = ""
+
+
+class Battle:
+    def __str__(self):
+        return "battle_id: {}, {}-{}, {}".format(self.battle_id, self.kill_num, self.death_num, self.ext_tag_desc)
+    battle_id = 0
+    game_score = 0
+    battle_time = 0
+    kill_num = 0
+    death_num = 0
+    ext_tag_desc = ""
 
 
 class BaseClient(ABC):
@@ -44,7 +66,7 @@ class BaseClient(ABC):
         ...
 
     @abstractmethod
-    def get_battle_list(self, offset, num):
+    def get_battle_list(self, player, offset, limit):
         ...
 
 
@@ -60,6 +82,12 @@ class ClientSync(BaseClient, ABC):
         self.session.headers = HEADERS
 
     def login(self):
+        if os.path.exists("cache"):
+            with open("cache", "r") as f:
+                cookies = json.loads(f.read())
+            for key, value in cookies.items():
+                self.session.cookies.set(key, value)
+            return
         options = webdriver.ChromeOptions()
         options.add_argument('--headless')
         prefs = {"profile.managed_default_content_settings.images": 2}
@@ -95,10 +123,10 @@ class ClientSync(BaseClient, ABC):
             expected_conditions.invisibility_of_element_located((By.ID, "login")))
         cookies = parse_cookies(chrome_driver.get_cookies())
 
+        with open("cache", "w") as f:
+            f.write(json.dumps(cookies))
         for key, value in cookies.items():
             self.session.cookies.set(key, value)
-        # self.session.cookies.set("tgp_ticket", cookies.get("tgp_ticket"))
-        # self.session.cookies.set("tgp_id", cookies.get("tgp_ticket"))
 
     def query_by_nick(self, nick):
         resp = self.session.post(NICK_API, json={
@@ -106,16 +134,57 @@ class ClientSync(BaseClient, ABC):
         })
         if resp.status_code != 200:
             return None
-        context = resp.content.decode()
         try:
-            json_body = json.loads(context)
-            if json_body.get("code") != 0:
+            players = []
+            json_body = resp.json()
+            if not json_body:
                 return None
-            return json_body.get("data")
-        except Exception("load query_by_nick context error") as e:
-            print(e)
-            return None
+            data = json_body.get("data")
+            if data.get("result") != 0:
+                return None
+            for player in data.get("player_list"):
+                p = Player()
+                p.game_nick = player.get("game_nick")
+                p.area_id = player.get("area_id")
+                p.slol_id = player.get("slol_id")
+                p.icon_url = player.get("icon_url")
+                p.rank_title = player.get("rank_title")
 
-    def get_battle_list(self, offset, num):
-        ...
+                players.append(p)
+            return players
+        except Exception("query_by_nick error") as e:
+            print(e)
+
+    def get_battle_list(self, player, offset=0, limit=10):
+        resp = self.session.post(BATTLE_API, json={
+            "offset": 0,
+            "limit": 10,
+            "filter_type": 1,  # 查询类型 0:无筛选 1:匹配 2:排位 3:云顶
+            "game_id": 26,
+            "slol_id": player.slol_id,
+            "area_id": player.area_id,
+            # todo: isme
+            "isMe": True
+        }, verify=False)
+        if resp.status_code != 200:
+            return None
+        try:
+            player_battle_brief_list = []
+            json_body = resp.json()
+            data = json_body.get("data")
+            if data.get("result") != 0:
+                return None
+            for battle in data.get("player_battle_brief_list"):
+                b = Battle()
+                b.battle_id = battle.get("battle_id")
+                b.game_score = battle.get("game_score")
+                b.battle_time = battle.get("battle_time")
+                b.kill_num = battle.get("kill_num")
+                b.death_num = battle.get("death_num")
+                b.ext_tag_desc = battle.get("ext_tag_desc")
+                player_battle_brief_list.append(b)
+            return player_battle_brief_list
+
+        except Exception("query_by_nick error") as e:
+            print(e)
 
