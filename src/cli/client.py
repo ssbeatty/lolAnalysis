@@ -199,8 +199,8 @@ class ClientSync(BaseClient, ABC):
 
     @retry.retry(tries=5)
     def get_battle_list(self, player, b_type=0, offset=0, limit=10):
-        self.__get_battle_list(player, b_type, offset, limit)
+        return self.__get_battle_list(player, b_type, offset, limit)
 
     @retry.retry(tries=5)
     def query_by_nick(self, nick):
-        self.__query_by_nick(nick)
+        return self.__query_by_nick(nick)
