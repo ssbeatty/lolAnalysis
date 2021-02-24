@@ -12,6 +12,8 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.support.ui import WebDriverWait
 
+from src.cache.redis_cli import save_cookie, load_cookie, delete_cookie
+
 
 HEADERS = {
     'Referer': 'https://www.wegame.com.cn/middle/login/third_callback.html',
@@ -82,10 +84,9 @@ class ClientSync(BaseClient, ABC):
         self.session.headers = HEADERS
 
     def login(self):
-        if os.path.exists("cache"):
-            with open("cache", "r") as f:
-                cookies = json.loads(f.read())
-            for key, value in cookies.items():
+        _cookie = load_cookie()
+        if _cookie:
+            for key, value in _cookie.items():
                 self.session.cookies.set(key, value)
             return
         options = webdriver.ChromeOptions()
@@ -124,8 +125,7 @@ class ClientSync(BaseClient, ABC):
             expected_conditions.invisibility_of_element_located((By.ID, "login")))
         cookies = parse_cookies(chrome_driver.get_cookies())
 
-        with open("cache", "w") as f:
-            f.write(json.dumps(cookies))
+        save_cookie(cookies)
         for key, value in cookies.items():
             self.session.cookies.set(key, value)
 
@@ -142,6 +142,7 @@ class ClientSync(BaseClient, ABC):
                 return None
             data = json_body.get("data")
             if data.get("result") != 0:
+                delete_cookie()
                 return None
             for player in data.get("player_list"):
                 p = Player()
@@ -154,6 +155,7 @@ class ClientSync(BaseClient, ABC):
                 players.append(p)
             return players
         except Exception("query_by_nick error") as e:
+            delete_cookie()
             print(e)
 
     def get_battle_list(self, player, b_type=0, offset=0, limit=10):
@@ -172,6 +174,7 @@ class ClientSync(BaseClient, ABC):
             json_body = resp.json()
             data = json_body.get("data")
             if data.get("result") != 0:
+                delete_cookie()
                 return None
             for battle in data.get("player_battle_brief_list"):
                 b = Battle()
@@ -185,5 +188,6 @@ class ClientSync(BaseClient, ABC):
             return player_battle_brief_list
 
         except Exception("query_by_nick error") as e:
+            delete_cookie()
             print(e)
 
