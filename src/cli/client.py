@@ -66,7 +66,7 @@ class BaseClient(ABC):
         ...
 
     @abstractmethod
-    def get_battle_list(self, player, offset, limit):
+    def get_battle_list(self, player, b_type, offset, limit):
         ...
 
 
@@ -93,7 +93,8 @@ class ClientSync(BaseClient, ABC):
         prefs = {"profile.managed_default_content_settings.images": 2}
 
         caps = DesiredCapabilities().CHROME
-        # caps["pageLoadStrategy"] = "normal"  #  Waits for full page load
+        # caps["pageLoadStrategy"] = "normal"
+        #  Waits for full page load
         caps["pageLoadStrategy"] = "none"
 
         options.add_experimental_option("prefs", prefs)
@@ -155,16 +156,14 @@ class ClientSync(BaseClient, ABC):
         except Exception("query_by_nick error") as e:
             print(e)
 
-    def get_battle_list(self, player, offset=0, limit=10):
+    def get_battle_list(self, player, b_type=0, offset=0, limit=10):
         resp = self.session.post(BATTLE_API, json={
             "offset": 0,
             "limit": 10,
-            "filter_type": 1,  # 查询类型 0:无筛选 1:匹配 2:排位 3:云顶
+            "filter_type": b_type,  # 查询类型 0:无筛选 1:匹配 2:排位 3:云顶
             "game_id": 26,
             "slol_id": player.slol_id,
             "area_id": player.area_id,
-            # todo: isme
-            "isMe": True
         }, verify=False)
         if resp.status_code != 200:
             return None
