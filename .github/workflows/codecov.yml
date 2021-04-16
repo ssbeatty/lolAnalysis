@@ -15,5 +15,4 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
-          name: requirements.txt
           path: ./requirements.txt
