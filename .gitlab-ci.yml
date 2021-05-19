@@ -1,0 +1,47 @@
+before_script:
+  - export IMAGE_FULL_NAME=${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHA}
+
+stages:
+  - compile
+  - build
+  - run
+variables:
+  PROJECT: "ci-demo"
+编译:
+  image: python:3.6
+  stage: compile
+  allow_failure: false
+  only:
+    - master
+  tags:
+    - test
+  script:
+    - python --version
+  artifacts:
+    name: $PROJECT
+    expire_in: 7 days
+    paths:
+      - requirements.txt
+构建镜像:
+  image: docker:stable
+  stage: build
+  script:
+    # 这里的变量会自动获取你当前推送代码的gitlab用户和密码以及仓库地址
+    - docker login --username $CI_REGISTRY_USER --password $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # 这里的变量就是我们全局配置定义的了
+    - docker build -t $IMAGE_FULL_NAME .
+    - docker push $IMAGE_FULL_NAME
+    - docker rmi $IMAGE_FULL_NAME
+  only:
+    - master
+  tags:
+    - test
+#运行:
+#  image: docker:stable
+#  stage: run
+#  script:
+#    - docker run -d --name $PROJECT -p 7777:7777 $IMAGE_FULL_NAME
+#  only:
+#    - master
+#  tags:
+#    - test
